@@ -69,20 +69,37 @@ export async function getAreaById(id: number): Promise<Area> {
   }
 }
 
-export async function createArea(createAreaDto: CreateAreaDto): Promise<Area> {
+interface CreateAreaPayload {
+  name: string;
+  areaName: string;
+  landId: number;
+  area: number;
+  usage: string;
+  status: 'available' | 'in-use' | 'pending';
+  classification: AreaClassification;
+  coordinates?: {
+    center: { lat: number; lng: number };
+    polygon: [number, number][];
+    zoom: number;
+  };
+  landPlot: string;
+}
+
+export const createArea = async (payload: CreateAreaPayload) => {
+  const token = localStorage.getItem('access_token');
   try {
-    const response = await axiosInstance.post<AreaResponse>(BASE_URL, {
-      ...createAreaDto,
-      coordinates: typeof createAreaDto.coordinates.polygon === 'string' 
-        ? createAreaDto.coordinates 
-        : toApiCoordinates(createAreaDto.coordinates as unknown as DatabaseCoordinates)
+    const response = await axiosInstance.post("areas", payload, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
     });
-    return toArea(response.data);
+    return response.data;
   } catch (error) {
     console.error('Error creating area:', error);
     throw error;
   }
-}
+};
 
 export const updateArea = async (id: number, payload: UpdateAreaDto): Promise<Area> => {
   try {

@@ -1,25 +1,17 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, message, InputNumber, Card, Space, Modal, Tabs } from 'antd';
+import { Form, Input, Select, Button, InputNumber, Card, Space, Tabs } from 'antd';
 import { useRouter } from 'next/navigation';
-import { createArea } from '@/service/area.service';
-import { fetchLands, createLand } from '@/service/land.service';
+import { getAreaById, updateArea } from '@/service/area.service';
+import { fetchLands } from '@/service/land.service';
 import type { Land } from '@/model/land.model';
 import { createDefaultCoordinates, DatabaseCoordinates } from "@/model/coordinate.model";
 import dynamic from 'next/dynamic';
-import { PlusOutlined } from '@ant-design/icons';
 import { AreaClassification } from '@/model/area.model';
+import { App } from 'antd';
 
 const Map = dynamic(() => import('@/component/map/MapDrawer'), { ssr: false });
-
-interface AddLandFormValues {
-  name: string;
-  address: string;
-  area: number;
-  price: number;
-  location: string;
-}
 
 interface AreaFormValues {
   name: string;
@@ -31,27 +23,54 @@ interface AreaFormValues {
   classification: AreaClassification;
 }
 
-export default function AddArea() {
+export default function EditArea({ params }: { params: { id: string } }) {
   const [form] = Form.useForm();
-  const [landForm] = Form.useForm();
   const router = useRouter();
   const [lands, setLands] = useState<Land[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isAddLandModalVisible, setIsAddLandModalVisible] = useState(false);
   const [selectedCoordinate, setSelectedCoordinate] = useState<DatabaseCoordinates>(createDefaultCoordinates());
+  const { message } = App.useApp();
 
   useEffect(() => {
-    const loadLands = async () => {
+    const loadData = async () => {
       try {
-        const data = await fetchLands();
-        setLands(data);
+        setLoading(true);
+        const [areaData, landsData] = await Promise.all([
+          getAreaById(parseInt(params.id)),
+          fetchLands()
+        ]);
+        
+        setLands(landsData);
+        
+        // Set form values
+        form.setFieldsValue({
+          name: areaData.name,
+          areaName: areaData.areaName,
+          landId: areaData.land,
+          area: areaData.area,
+          usage: areaData.usage,
+          status: areaData.status,
+          classification: areaData.classification
+        });
+
+        // Set coordinates
+        if (areaData.coordinates) {
+          setSelectedCoordinate({
+            center: areaData.coordinates.center,
+            polygon: areaData.coordinates.polygon,
+            zoom: areaData.coordinates.zoom
+          });
+        }
       } catch (error) {
-        console.error('Failed to load lands:', error);
-        message.error('Failed to load lands');
+        console.error('Error loading data:', error);
+        message.error('Failed to load area data');
+      } finally {
+        setLoading(false);
       }
     };
-    loadLands();
-  }, []);
+
+    loadData();
+  }, [params.id, form, message]);
 
   const handleCoordinatesUpdate = (newCoordinates: DatabaseCoordinates) => {
     setSelectedCoordinate(newCoordinates);
@@ -65,50 +84,6 @@ export default function AddArea() {
         center: { lat, lng }
       };
       setSelectedCoordinate(newCoordinates);
-    }
-  };
-
-  const handleAddLand = async (values: AddLandFormValues) => {
-    try {
-      setLoading(true);
-      const newLand = await createLand({
-        name: values.name,
-        address: values.address,
-        area: Number(values.area),
-        price: Number(values.price),
-        location: values.location,
-        properties: [
-          { key: "Mặt tiền", value: "0m" },
-          { key: "Chiều dài", value: 0 },
-          { key: "Hướng", value: "Chưa xác định" },
-          { key: "Sổ đỏ", value: false }
-        ],
-        coordinate: {
-          polygon: JSON.stringify(selectedCoordinate.polygon),
-          center: JSON.stringify(selectedCoordinate.center),
-          zoom: selectedCoordinate.zoom
-        },
-        ownerId: 1, // Default owner ID
-        regionId: 1, // Default region ID
-        planningMapUrl: '',
-        googleMapUrl: `https://maps.google.com/?q=${selectedCoordinate.center.lat},${selectedCoordinate.center.lng}`
-      });
-      setLands(prev => [...prev, newLand]);
-      message.success('Land created successfully');
-      setIsAddLandModalVisible(false);
-      landForm.resetFields();
-    } catch (error) {
-      console.error('Error creating land:', error);
-      message.error('Failed to create land');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleLandSelect = (landId: number) => {
-    const selectedLand = lands.find(land => land.id === landId);
-    if (selectedLand) {
-      form.setFieldValue('landId', landId);
     }
   };
 
@@ -130,30 +105,24 @@ export default function AddArea() {
         throw new Error('Selected land not found');
       }
 
-      await createArea({
-        name: values.name,
-        areaName: values.areaName,
-        landId: values.landId,
-        area: values.area,
-        usage: values.usage,
-        status: values.status,
-        classification: values.classification,
+      await updateArea(parseInt(params.id), {
+        ...values,
+        landPlot: selectedLand.name,
         coordinates: {
-          center: selectedCoordinate.center,
-          polygon: selectedCoordinate.polygon,
+          center: `${selectedCoordinate.center.lat},${selectedCoordinate.center.lng}`,
+          polygon: JSON.stringify(selectedCoordinate.polygon),
           zoom: selectedCoordinate.zoom
-        },
-        landPlot: selectedLand.name
+        }
       });
 
-      message.success('Area created successfully');
+      message.success('Area updated successfully');
       router.push('/area');
     } catch (error) {
-      console.error('Error creating area:', error);
+      console.error('Error updating area:', error);
       if (error instanceof Error) {
         message.error(error.message);
       } else {
-        message.error('Failed to create area');
+        message.error('Failed to update area');
       }
     } finally {
       setLoading(false);
@@ -186,30 +155,21 @@ export default function AddArea() {
             <Form.Item
               name="landId"
               label="Land"
-              rules={[{ required: true, message: 'Please select or create a land!' }]}
-              validateTrigger={['onChange', 'onBlur']}
+              rules={[{ required: true, message: 'Please select a land!' }]}
             >
-              <Space.Compact style={{ width: '100%' }}>
-                <Select 
-                  style={{ width: 'calc(100% - 32px)' }}
-                  placeholder="Select a land"
-                  showSearch
-                  filterOption={(input, option) =>
-                    (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
-                  }
-                  onChange={handleLandSelect}
-                >
-                  {lands.map(land => (
-                    <Select.Option key={land.id} value={land.id}>
-                      {land.name}
-                    </Select.Option>
-                  ))}
-                </Select>
-                <Button 
-                  icon={<PlusOutlined />}
-                  onClick={() => setIsAddLandModalVisible(true)}
-                />
-              </Space.Compact>
+              <Select 
+                placeholder="Select a land"
+                showSearch
+                filterOption={(input, option) =>
+                  (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
+                }
+              >
+                {lands.map(land => (
+                  <Select.Option key={land.id} value={land.id}>
+                    {land.name}
+                  </Select.Option>
+                ))}
+              </Select>
             </Form.Item>
 
             <Form.Item
@@ -232,7 +192,6 @@ export default function AddArea() {
               name="status"
               label="Status"
               rules={[{ required: true, message: 'Please select the status!' }]}
-              initialValue="available"
             >
               <Select>
                 <Select.Option value="available">Available</Select.Option>
@@ -245,7 +204,6 @@ export default function AddArea() {
               name="classification"
               label="Classification"
               rules={[{ required: true, message: 'Please select the classification!' }]}
-              initialValue={AreaClassification.PLANT}
             >
               <Select>
                 <Select.Option value={AreaClassification.PLANT}>Plant</Select.Option>
@@ -312,21 +270,24 @@ export default function AddArea() {
         </div>
       ),
     },
-    {
-      key: 'areas',
-      label: 'Areas',
-      children: <div>Areas content</div>,
-    },
   ];
+
+  if (loading) {
+    return (
+      <div className="h-screen flex items-center justify-center">
+        <div className="text-gray-500">Loading...</div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px' }}>
       <Card 
-        title="Add New Area"
+        title="Edit Area"
         extra={
           <Space>
             <Button type="primary" onClick={() => form.submit()} loading={loading}>
-              Create Area
+              Update Area
             </Button>
             <Button onClick={() => router.push('/area')}>
               Cancel
@@ -338,86 +299,10 @@ export default function AddArea() {
           form={form}
           layout="vertical"
           onFinish={onFinish}
-          initialValues={{
-            status: 'available',
-            classification: AreaClassification.PLANT
-          }}
         >
           <Tabs items={items} />
         </Form>
       </Card>
-
-      <Modal
-        title="Add New Land"
-        open={isAddLandModalVisible}
-        onCancel={() => {
-          setIsAddLandModalVisible(false);
-          landForm.resetFields();
-        }}
-        footer={null}
-      >
-        <Form
-          form={landForm}
-          layout="vertical"
-          onFinish={handleAddLand}
-        >
-          <Form.Item
-            name="name"
-            label="Land Name"
-            rules={[{ required: true, message: 'Please input the land name!' }]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            name="address"
-            label="Address"
-            rules={[{ required: true, message: 'Please input the address!' }]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item
-            name="area"
-            label="Area (m²)"
-            rules={[{ required: true, message: 'Please input the area!' }]}
-          >
-            <InputNumber style={{ width: '100%' }} min={0} />
-          </Form.Item>
-
-          <Form.Item
-            name="price"
-            label="Price"
-            rules={[{ required: true, message: 'Please input the price!' }]}
-          >
-            <InputNumber 
-              style={{ width: '100%' }} 
-              min={0}
-              formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-              parser={(value: string | undefined): number => value ? Number(value.replace(/\$\s?|(,*)/g, '')) : 0}
-            />
-          </Form.Item>
-
-          <Form.Item
-            name="location"
-            label="Location"
-            rules={[{ required: true, message: 'Please input the location!' }]}
-          >
-            <Input />
-          </Form.Item>
-
-          <Form.Item>
-            <Space>
-              <Button type="primary" htmlType="submit" loading={loading}>
-                Create Land
-              </Button>
-              <Button onClick={() => setIsAddLandModalVisible(false)}>
-                Cancel
-              </Button>
-            </Space>
-          </Form.Item>
-        </Form>
-      </Modal>
     </div>
   );
-}
+} 

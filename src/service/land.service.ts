@@ -140,13 +140,33 @@ export const getLandsByRegion = async (regionId: number) => {
   }
 };
 
-export const createLand = async (payload: Omit<Land, 'id' | 'created_date' | 'modified_date'>) => {
+export const createLand = async (payload: {
+  name: string;
+  address: string;
+  area: number;
+  price: number;
+  location: string;
+  properties: Array<{ key: string; value: string | number | boolean }>;
+  coordinate: {
+    polygon: [number, number][] | string;
+    center: { lat: number; lng: number } | string;
+    zoom: number;
+  };
+  ownerId: number;
+  regionId: number;
+  planningMapUrl?: string;
+  googleMapUrl?: string;
+}) => {
   const token = getToken();
   try {
     // Ensure coordinate data is properly formatted
     const coordinatePayload = {
-      polygon: JSON.stringify(payload.coordinate.polygon),
-      center: JSON.stringify(payload.coordinate.center),
+      polygon: typeof payload.coordinate.polygon === 'string' 
+        ? payload.coordinate.polygon 
+        : JSON.stringify(payload.coordinate.polygon),
+      center: typeof payload.coordinate.center === 'string'
+        ? payload.coordinate.center
+        : JSON.stringify(payload.coordinate.center),
       zoom: payload.coordinate.zoom
     };
 
@@ -156,21 +176,12 @@ export const createLand = async (payload: Omit<Land, 'id' | 'created_date' | 'mo
       area: payload.area,
       price: payload.price,
       location: payload.location,
-      areaCount: 0,
-      properties: [],
+      properties: payload.properties,
       coordinate: coordinatePayload,
-      areas: [],
-      planningMapUrl: '',
-      googleMapUrl: '',
-      owner: {
-        id: payload.owner.id,
-        name: payload.owner.name || '',
-        phone: payload.owner.phone || ''
-      },
-      region: {
-        id: payload.region.id,
-        name: payload.region.name || ''
-      }
+      ownerId: payload.ownerId,
+      regionId: payload.regionId,
+      planningMapUrl: payload.planningMapUrl || '',
+      googleMapUrl: payload.googleMapUrl || ''
     };
 
     console.log('Creating land with payload:', JSON.stringify(formattedPayload, null, 2));

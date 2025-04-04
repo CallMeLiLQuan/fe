@@ -1,13 +1,12 @@
-import type { Metadata } from "next";
 import "./globals.css";
 import "leaflet/dist/leaflet.css";
-import ClientLayout from "./client-layout";
-import { ConfigProvider, theme } from 'antd';
+import { App as AntdApp, ConfigProvider, theme } from 'antd';
 import { Inter } from 'next/font/google';
+import ClientLayout from "./client-layout";
 
 const inter = Inter({ subsets: ['latin'] });
 
-export const metadata: Metadata = {
+export const metadata = {
   title: "Quản lý đất",
   description: "System for managing land and areas",
 };
@@ -28,7 +27,9 @@ export default function RootLayout({
             },
           }}
         >
-          <ClientLayout>{children}</ClientLayout>
+          <AntdApp>
+            <ClientLayout>{children}</ClientLayout>
+          </AntdApp>
         </ConfigProvider>
       </body>
     </html>

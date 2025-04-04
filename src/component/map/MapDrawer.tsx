@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { MapContainer, TileLayer, useMap, ZoomControl } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -27,12 +27,17 @@ interface DrawCreatedEvent extends L.LeafletEvent {
   layerType: string;
 }
 
+interface EditFeatureEvent extends L.LeafletEvent {
+  layers: L.LayerGroup;
+}
+
 function DrawingControl({ onPolygonComplete, enabled }: { 
   onPolygonComplete: (coordinates: DatabaseCoordinates) => void;
   enabled: boolean;
 }) {
   const map = useMap();
-  const [drawControl, setDrawControl] = useState<L.Control.Draw | null>(null);
+  const drawControlRef = useRef<L.Control.Draw | null>(null);
+  const featureGroupRef = useRef<L.FeatureGroup | null>(null);
 
   useEffect(() => {
     if (!enabled || !map) return;
@@ -42,20 +47,29 @@ function DrawingControl({ onPolygonComplete, enabled }: {
         // Import leaflet-draw dynamically
         await import('leaflet-draw');
         
-        const featureGroup = new L.FeatureGroup();
-        map.addLayer(featureGroup);
+        // Create feature group if it doesn't exist
+        if (!featureGroupRef.current) {
+          featureGroupRef.current = new L.FeatureGroup();
+          map.addLayer(featureGroupRef.current);
+        }
+
+        // Remove existing draw control if it exists
+        if (drawControlRef.current) {
+          map.removeControl(drawControlRef.current);
+        }
 
         // Initialize draw control
-        const control = new L.Control.Draw({
+        const drawControl = new L.Control.Draw({
           position: 'topleft',
           draw: {
-            marker: false,
-            circlemarker: false,
-            circle: false,
             rectangle: false,
+            circle: false,
+            circlemarker: false,
+            marker: false,
             polyline: false,
             polygon: {
               allowIntersection: false,
+              showArea: true,
               drawError: {
                 color: '#e1e100',
                 message: '<strong>Oh snap!</strong> you can\'t draw that!'
@@ -68,20 +82,36 @@ function DrawingControl({ onPolygonComplete, enabled }: {
             }
           },
           edit: {
-            featureGroup: featureGroup,
-            remove: false,
-            edit: false
+            featureGroup: featureGroupRef.current,
+            edit: {
+              selectedPathOptions: {
+                color: '#ff0000',
+                fillColor: '#ff0000',
+                fillOpacity: 0.3
+              }
+            },
+            remove: true
           }
         });
 
-        map.addControl(control);
-        setDrawControl(control);
+        map.addControl(drawControl);
+        drawControlRef.current = drawControl;
 
         // Handle draw events
         const handleDrawCreated = (e: L.LeafletEvent) => {
           const event = e as DrawCreatedEvent;
           const layer = event.layer;
           if (event.layerType === 'polygon') {
+            // Clear existing layers before adding new one
+            if (featureGroupRef.current) {
+              featureGroupRef.current.clearLayers();
+            }
+            
+            // Add the new layer
+            if (featureGroupRef.current) {
+              featureGroupRef.current.addLayer(layer);
+            }
+
             const coordinates = layer.getLatLngs()[0] as L.LatLng[];
             const points: [number, number][] = coordinates.map((coord: L.LatLng) => [coord.lat, coord.lng]);
             
@@ -93,20 +123,33 @@ function DrawingControl({ onPolygonComplete, enabled }: {
               center: { lat: center.lat, lng: center.lng },
               zoom: map.getZoom()
             });
-
-            // Clear existing layers and add the new one
-            featureGroup.clearLayers();
-            featureGroup.addLayer(layer);
           }
         };
 
+        // Add event listeners
         map.on('draw:created', handleDrawCreated);
+        map.on('draw:edited', (e: L.LeafletEvent) => {
+          const editEvent = e as EditFeatureEvent;
+          editEvent.layers.eachLayer((layer) => {
+            if (layer instanceof L.Polygon) {
+              const coordinates = layer.getLatLngs()[0] as L.LatLng[];
+              const points: [number, number][] = coordinates.map((coord: L.LatLng) => [coord.lat, coord.lng]);
+              
+              const bounds = layer.getBounds();
+              const center = bounds.getCenter();
+
+              onPolygonComplete({
+                polygon: points,
+                center: { lat: center.lat, lng: center.lng },
+                zoom: map.getZoom()
+              });
+            }
+          });
+        });
 
         return () => {
           map.off('draw:created', handleDrawCreated);
-          if (featureGroup) {
-            map.removeLayer(featureGroup);
-          }
+          map.off('draw:edited');
         };
       } catch (error) {
         console.error('Error initializing leaflet-draw:', error);
@@ -116,11 +159,15 @@ function DrawingControl({ onPolygonComplete, enabled }: {
     initializeDrawControl();
 
     return () => {
-      if (drawControl) {
-        map.removeControl(drawControl);
+      // Cleanup on unmount
+      if (drawControlRef.current) {
+        map.removeControl(drawControlRef.current);
+      }
+      if (featureGroupRef.current) {
+        map.removeLayer(featureGroupRef.current);
       }
     };
-  }, [enabled, map, onPolygonComplete, drawControl]);
+  }, [enabled, map, onPolygonComplete]);
 
   return null;
 }
@@ -130,17 +177,19 @@ const MapDrawer: React.FC<MapDrawerProps> = ({
   onCoordinatesUpdate,
   drawingEnabled = true
 }) => {
+  const mapId = useRef(`map-${Math.random().toString(36).substr(2, 9)}`);
   const handlePolygonComplete = useCallback((coords: DatabaseCoordinates) => {
     onCoordinatesUpdate(coords);
   }, [onCoordinatesUpdate]);
 
   return (
-    <div style={{ height: '100%', width: '100%' }}>
+    <div style={{ height: '100%', width: '100%' }} id={mapId.current}>
       <MapContainer
         style={{ height: '100%', width: '100%' }}
         center={[coordinates.center.lat, coordinates.center.lng]}
         zoom={coordinates.zoom}
         zoomControl={false}
+        key={mapId.current}
       >
         {/* Satellite Layer */}
         <TileLayer

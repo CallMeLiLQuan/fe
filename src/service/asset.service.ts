@@ -12,7 +12,7 @@ export interface Asset {
   value?: number;
   category: string;
   quantity: number;
-  properties?: any[];
+  properties?: unknown[];
   landName?: string;
   areaName?: string;
   area?: {

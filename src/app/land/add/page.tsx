@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, message, InputNumber, Card, Space } from 'antd';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Form, Input, Select, Button, InputNumber, Card, Space, App } from 'antd';
 import { useRouter } from 'next/navigation';
 import { createLand } from '@/service/land.service';
 import { fetchRegions } from '@/service/region.service';
@@ -10,28 +10,29 @@ import type { Region } from '@/model/region.model';
 import type { Owner } from '@/model/owner.model';
 import dynamic from 'next/dynamic';
 import { DatabaseCoordinates } from '@/model/coordinate.model';
+import { AxiosError } from 'axios';
 
 const Map = dynamic(() => import('@/component/map/MapDrawer'), { ssr: false });
 
 export default function AddLand() {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
   const router = useRouter();
   const [regions, setRegions] = useState<Region[]>([]);
   const [owners, setOwners] = useState<Owner[]>([]);
   const [loading, setLoading] = useState(false);
   const [ownerType, setOwnerType] = useState<'existing' | 'new'>('existing');
-  const [coordinates, setCoordinates] = useState<DatabaseCoordinates>({
+  const [coordinates, setCoordinates] = useState<DatabaseCoordinates>(() => ({
     polygon: [[21.0235276, 105.8420103]],
     center: {
       lat: 21.0235276,
       lng: 105.8420103
     },
     zoom: 15
-  });
+  }));
 
-  const handleCoordinatesUpdate = (newCoordinates: DatabaseCoordinates) => {
+  const handleCoordinatesUpdate = useCallback((newCoordinates: DatabaseCoordinates) => {
     if (!newCoordinates.polygon || newCoordinates.polygon.length === 0) {
-      // Set default coordinates if polygon is empty
       newCoordinates.polygon = [[21.0235276, 105.8420103]];
     }
     if (!newCoordinates.center) {
@@ -50,40 +51,55 @@ export default function AddLand() {
       center: `${newCoordinates.center.lat},${newCoordinates.center.lng}`,
       zoom: newCoordinates.zoom
     });
-  };
+  }, [form]);
 
-  const handleCenterChange = (value: string) => {
+  const handleCenterChange = useCallback((value: string) => {
     const [lat, lng] = value.split(',').map(Number);
     if (!isNaN(lat) && !isNaN(lng)) {
-      const newCoordinates = {
-        ...coordinates,
+      setCoordinates(prev => ({
+        ...prev,
         center: { lat, lng }
-      };
-      setCoordinates(newCoordinates);
+      }));
       form.setFieldsValue({ center: value });
     }
-  };
+  }, [form]);
 
   useEffect(() => {
+    let mounted = true;
+
     const loadData = async () => {
       try {
         const [regionsData, ownersData] = await Promise.all([
           fetchRegions(),
           fetchOwners()
         ]);
-        setRegions(regionsData);
-        setOwners(ownersData);
+        if (mounted) {
+          setRegions(regionsData);
+          setOwners(ownersData);
+        }
       } catch (error) {
         console.error('Error loading initial data:', error);
-        message.error('Không thể tải dữ liệu ban đầu');
+        if (mounted) {
+          message.error('Không thể tải dữ liệu ban đầu');
+        }
       }
     };
-    loadData();
-  }, []);
 
-  const onFinish = async (values: Record<string, unknown>) => {
+    loadData();
+
+    return () => {
+      mounted = false;
+    };
+  }, [message]);
+
+  const onFinish = useCallback(async (values: Record<string, unknown>) => {
     setLoading(true);
     try {
+      // Validate coordinates
+      if (!coordinates.polygon || coordinates.polygon.length < 3) {
+        throw new Error('Vui lòng vẽ polygon với ít nhất 3 điểm trên bản đồ');
+      }
+
       // Format owner data
       const ownerPayload = ownerType === 'new' 
         ? {
@@ -106,62 +122,81 @@ export default function AddLand() {
         throw new Error('Vui lòng chọn vùng');
       }
 
-      // Format coordinate data
-      const coordinatePayload = {
-        polygon: coordinates.polygon || [[21.0235276, 105.8420103]],
-        center: coordinates.center || {
-          lat: 21.0235276,
-          lng: 105.8420103
-        },
-        zoom: coordinates.zoom || 15
-      };
+      // Validate required fields
+      if (!values.name || typeof values.name !== 'string' || values.name.trim() === '') {
+        throw new Error('Tên khu đất không được để trống');
+      }
 
-      // Format properties
-      const defaultProperties = [
-        { key: "Mặt tiền", value: "0m" },
-        { key: "Chiều dài", value: 0 },
-        { key: "Hướng", value: "Chưa xác định" },
-        { key: "Sổ đỏ", value: false }
-      ];
+      if (!values.address || typeof values.address !== 'string' || values.address.trim() === '') {
+        throw new Error('Địa chỉ không được để trống');
+      }
 
+      if (!values.area || typeof values.area !== 'number' || values.area <= 0) {
+        throw new Error('Diện tích phải lớn hơn 0');
+      }
+
+      if (!values.price || typeof values.price !== 'number' || values.price <= 0) {
+        throw new Error('Giá trị phải lớn hơn 0');
+      }
+
+      
       const payload = {
         name: values.name as string,
         address: values.address as string,
         area: Number(values.area),
         price: Number(values.price),
         location: values.location as string,
-        areaCount: 0,
-        properties: defaultProperties,
-        coordinate: coordinatePayload,
-        areas: [],
-        planningMapUrl: '',
-        googleMapUrl: '',
-        owner: {
-          id: ownerPayload.id,
-          name: ownerPayload.name,
-          phone: ownerPayload.phone || ''
+        properties: [
+          { key: "Mặt tiền", value: "0m" },
+          { key: "Chiều dài", value: 0 },
+          { key: "Hướng", value: "Chưa xác định" },
+          { key: "Sổ đỏ", value: false }
+        ] as Array<{ key: string; value: string | number | boolean }>,
+        coordinate: {
+          polygon: JSON.stringify(coordinates.polygon),
+          center: JSON.stringify(coordinates.center),
+          zoom: coordinates.zoom
         },
-        region: {
-          id: selectedRegion.id,
-          name: selectedRegion.name
-        }
+        ownerId: ownerType === 'new' ? 0 : Number(values.ownerId),
+        regionId: Number(values.regionId),
+        planningMapUrl: '',
+        googleMapUrl: `https://maps.google.com/?q=${coordinates.center.lat},${coordinates.center.lng}`
       };
 
-      console.log('Sending payload:', JSON.stringify(payload, null, 2));
-      await createLand(payload);
-      message.success('Khu đất được tạo thành công');
-      router.push('/land');
+      try {
+        await createLand(payload);
+        message.success('Khu đất được tạo thành công');
+        router.push('/land');
+      } catch (error: unknown) {
+        if (error instanceof AxiosError) {
+          if (error.response) {
+            // Handle specific API errors
+            const errorMessage = error.response.data?.message || 'Có lỗi xảy ra khi tạo khu đất';
+            if (Array.isArray(errorMessage)) {
+              // If the error message is an array of validation errors
+              message.error(errorMessage.join(', '));
+            } else {
+              message.error(errorMessage);
+            }
+          } else if (error.request) {
+            // Handle network errors
+            message.error('Không thể kết nối đến server');
+          }
+        } else {
+          // Handle other errors
+          message.error('Có lỗi xảy ra khi tạo khu đất');
+        }
+      }
     } catch (error) {
-      console.error('Error creating land:', error);
       if (error instanceof Error) {
         message.error(error.message);
       } else {
-        message.error('Không thể tạo khu đất');
+        message.error('Có lỗi xảy ra khi tạo khu đất');
       }
     } finally {
       setLoading(false);
     }
-  };
+  }, [coordinates, ownerType, owners, regions, router, message]);
 
   return (
     <div style={{ padding: '24px' }}>
