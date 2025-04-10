@@ -1,6 +1,6 @@
 "use client";
 import React, { useEffect } from "react";
-import { Modal, Form, Input, InputNumber, message } from "antd";
+import { Modal, Form, Input, App } from "antd";
 import { Owner } from "@/model/owner.model";
 import { createOwner, updateOwner } from "@/service/owner.service";
 
@@ -17,30 +17,41 @@ const OwnerModal: React.FC<OwnerModalProps> = ({
   onSuccess,
   owner,
 }) => {
+  const { message } = App.useApp();
   const [form] = Form.useForm();
 
   useEffect(() => {
     if (owner) {
-      form.setFieldsValue(owner);
+      // Exclude non-form fields when setting form values
+      const { name, phone, address, email } = owner;
+      form.setFieldsValue({ name, phone, address, email });
     } else {
       form.resetFields();
     }
-  }, [owner, form]);
+  }, [owner, form, visible]);
 
   const handleOk = async () => {
     try {
       const values = await form.validateFields();
+      
+      // Prepare data for API
+      const ownerData = {
+        ...values,
+        landCount: owner?.landCount || 0,
+      };
+      
+      console.log('Submitting owner data:', ownerData);
+      
       if (owner) {
-        // Cập nhật owner
-        await updateOwner(owner.id, values);
+        await updateOwner(String(owner.id), ownerData);
         message.success("Cập nhật thành công");
       } else {
-        // Tạo mới owner
-        await createOwner(values);
+        await createOwner(ownerData);
         message.success("Thêm mới thành công");
       }
       onSuccess();
     } catch (error: unknown) {
+      console.error("Error submitting form:", error);
       if (error instanceof Error) {
         message.error(error.message);
       } else {
@@ -51,12 +62,13 @@ const OwnerModal: React.FC<OwnerModalProps> = ({
 
   return (
     <Modal
-      title={owner ? "Chỉnh sửa Owner" : "Thêm mới Owner"}
+      title={owner ? "Chỉnh sửa chủ đất" : "Thêm mới chủ đất"}
       open={visible}
       onCancel={onCancel}
       onOk={handleOk}
+      destroyOnClose={true}
     >
-      <Form form={form} layout="vertical">
+      <Form form={form} layout="vertical" preserve={false}>
         <Form.Item
           label="Tên"
           name="name"
@@ -68,13 +80,11 @@ const OwnerModal: React.FC<OwnerModalProps> = ({
           label="Email"
           name="email"
           rules={[
-            { required: true, message: "Vui lòng nhập email" },
             { type: "email", message: "Email không hợp lệ" },
           ]}
         >
           <Input />
         </Form.Item>
-        {/* Thêm trường Số điện thoại */}
         <Form.Item
           label="Số điện thoại"
           name="phone"
@@ -88,13 +98,6 @@ const OwnerModal: React.FC<OwnerModalProps> = ({
           rules={[{ required: true, message: "Vui lòng nhập địa chỉ" }]}
         >
           <Input />
-        </Form.Item>
-        <Form.Item
-          label="Số lượng đất"
-          name="landCount"
-          rules={[{ required: true, message: "Vui lòng nhập số lượng đất" }]}
-        >
-          <InputNumber style={{ width: "100%" }} />
         </Form.Item>
       </Form>
     </Modal>

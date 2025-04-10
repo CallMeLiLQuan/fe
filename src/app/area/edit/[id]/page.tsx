@@ -1,15 +1,13 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Form, Input, Select, Button, InputNumber, Card, Space, Tabs } from 'antd';
+import { Form, Input, Select, Button, InputNumber, Card, Space, Tabs, App } from 'antd';
 import { useRouter } from 'next/navigation';
 import { getAreaById, updateArea } from '@/service/area.service';
 import { fetchLands } from '@/service/land.service';
 import type { Land } from '@/model/land.model';
 import { createDefaultCoordinates, DatabaseCoordinates } from "@/model/coordinate.model";
 import dynamic from 'next/dynamic';
-import { AreaClassification } from '@/model/area.model';
-import { App } from 'antd';
 
 const Map = dynamic(() => import('@/component/map/MapDrawer'), { ssr: false });
 
@@ -20,19 +18,21 @@ interface AreaFormValues {
   area: number;
   usage: string;
   landId: number;
-  classification: AreaClassification;
+  classification: string;
 }
 
 export default function EditArea({ params }: { params: { id: string } }) {
   const [form] = Form.useForm();
   const router = useRouter();
-  const [lands, setLands] = useState<Land[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedCoordinate, setSelectedCoordinate] = useState<DatabaseCoordinates>(createDefaultCoordinates());
   const { message } = App.useApp();
+  const [lands, setLands] = useState<Land[]>([]);
 
   useEffect(() => {
     const loadData = async () => {
+      if (!params.id) return;
+      
       try {
         setLoading(true);
         const [areaData, landsData] = await Promise.all([
@@ -40,16 +40,23 @@ export default function EditArea({ params }: { params: { id: string } }) {
           fetchLands()
         ]);
         
+        console.log('Setting form values:', areaData);
         setLands(landsData);
+
+        // Find the correct land ID from the land name (landPlot)
+        const matchingLand = landsData.find((land: Land) => land.name === areaData.landPlot);
+        const landId = matchingLand ? matchingLand.id : areaData.land?.id;
         
+        console.log('Matching land:', matchingLand, 'Selected landId:', landId);
+
         // Set form values
         form.setFieldsValue({
           name: areaData.name,
           areaName: areaData.areaName,
-          landId: areaData.land,
+          landId: landId,
+          status: areaData.status,
           area: areaData.area,
           usage: areaData.usage,
-          status: areaData.status,
           classification: areaData.classification
         });
 
@@ -63,7 +70,7 @@ export default function EditArea({ params }: { params: { id: string } }) {
         }
       } catch (error) {
         console.error('Error loading data:', error);
-        message.error('Failed to load area data');
+        message.error('Failed to load data');
       } finally {
         setLoading(false);
       }
@@ -88,41 +95,35 @@ export default function EditArea({ params }: { params: { id: string } }) {
   };
 
   const onFinish = async (values: AreaFormValues) => {
+    if (!params.id) return;
+    
+    console.log('Form values on submit:', values);
+    
     setLoading(true);
     try {
       if (!selectedCoordinate.polygon || selectedCoordinate.polygon.length < 3) {
-        throw new Error('Please draw a polygon with at least 3 points on the map');
-      }
-
-      if (!values.landId) {
-        message.error('Please select a land');
-        setLoading(false);
-        return;
+        throw new Error('Vui lòng vẽ đa giác với ít nhất 3 điểm trên bản đồ');
       }
 
       const selectedLand = lands.find(land => land.id === values.landId);
       if (!selectedLand) {
-        throw new Error('Selected land not found');
+        throw new Error('Không tìm thấy khu đất');
       }
 
       await updateArea(parseInt(params.id), {
         ...values,
-        landPlot: selectedLand.name,
-        coordinates: {
-          center: `${selectedCoordinate.center.lat},${selectedCoordinate.center.lng}`,
-          polygon: JSON.stringify(selectedCoordinate.polygon),
-          zoom: selectedCoordinate.zoom
-        }
+        coordinates: selectedCoordinate,
+        landPlot: selectedLand.name
       });
 
-      message.success('Area updated successfully');
+      message.success('Cập nhật khu vực thành công');
       router.push('/area');
     } catch (error) {
       console.error('Error updating area:', error);
       if (error instanceof Error) {
         message.error(error.message);
       } else {
-        message.error('Failed to update area');
+        message.error('Không thể cập nhật khu vực');
       }
     } finally {
       setLoading(false);
@@ -132,37 +133,39 @@ export default function EditArea({ params }: { params: { id: string } }) {
   const items = [
     {
       key: 'basicInfo',
-      label: 'Basic Information',
+      label: 'Thông tin cơ bản',
       children: (
         <div className="grid grid-cols-2 gap-8">
           <div>
             <Form.Item
               name="name"
-              label="Name"
-              rules={[{ required: true, message: 'Please input the name!' }]}
+              label="Tên khu vực"
+              rules={[{ required: true, message: 'Vui lòng nhập tên khu vực!' }]}
             >
               <Input />
             </Form.Item>
 
             <Form.Item
               name="areaName"
-              label="Area Name"
-              rules={[{ required: true, message: 'Please input the area name!' }]}
+              label="Vị trí"
+              rules={[{ required: true, message: 'Vui lòng nhập vị trí!' }]}
             >
               <Input />
             </Form.Item>
 
             <Form.Item
               name="landId"
-              label="Land"
-              rules={[{ required: true, message: 'Please select a land!' }]}
+              label="Khu đất"
+              rules={[{ required: true, message: 'Vui lòng chọn khu đất!' }]}
             >
-              <Select 
-                placeholder="Select a land"
+              <Select
+                placeholder="Chọn khu đất"
                 showSearch
                 filterOption={(input, option) =>
                   (option?.children as unknown as string).toLowerCase().includes(input.toLowerCase())
                 }
+                defaultActiveFirstOption={false}
+                value={form.getFieldValue('landId')}
               >
                 {lands.map(land => (
                   <Select.Option key={land.id} value={land.id}>
@@ -174,73 +177,73 @@ export default function EditArea({ params }: { params: { id: string } }) {
 
             <Form.Item
               name="area"
-              label="Area (m²)"
-              rules={[{ required: true, message: 'Please input the area!' }]}
+              label="Diện tích (ha)"
+              rules={[{ required: true, message: 'Vui lòng nhập diện tích!' }]}
             >
               <InputNumber style={{ width: '100%' }} min={0} />
             </Form.Item>
 
             <Form.Item
               name="usage"
-              label="Usage"
-              rules={[{ required: true, message: 'Please input the usage!' }]}
+              label="Mục đích sử dụng"
+              rules={[{ required: true, message: 'Vui lòng nhập mục đích sử dụng!' }]}
             >
               <Input.TextArea />
             </Form.Item>
 
             <Form.Item
               name="status"
-              label="Status"
-              rules={[{ required: true, message: 'Please select the status!' }]}
+              label="Trạng thái"
+              rules={[{ required: true, message: 'Vui lòng chọn trạng thái!' }]}
             >
               <Select>
-                <Select.Option value="available">Available</Select.Option>
-                <Select.Option value="in-use">In Use</Select.Option>
-                <Select.Option value="pending">Pending</Select.Option>
+                <Select.Option value="available">Khả dụng</Select.Option>
+                <Select.Option value="in-use">Đang sử dụng</Select.Option>
+                <Select.Option value="pending">Đang chờ</Select.Option>
               </Select>
             </Form.Item>
 
             <Form.Item
               name="classification"
-              label="Classification"
-              rules={[{ required: true, message: 'Please select the classification!' }]}
+              label="Phân loại"
+              rules={[{ required: true, message: 'Vui lòng chọn phân loại!' }]}
             >
               <Select>
-                <Select.Option value={AreaClassification.PLANT}>Plant</Select.Option>
-                <Select.Option value={AreaClassification.OTHER}>Other</Select.Option>
+                <Select.Option value="PLANT">Trồng trọt</Select.Option>
+                <Select.Option value="OTHER">Khác</Select.Option>
               </Select>
             </Form.Item>
           </div>
 
           <div>
-            <Form.Item label="Coordinates">
+            <Form.Item label="Tọa độ">
               <Card size="small">
                 <Form.Item
-                  label="Polygon"
-                  rules={[{ required: true, message: 'Please draw polygon on the map!' }]}
+                  label="Đa giác"
+                  rules={[{ required: true, message: 'Vui lòng vẽ đa giác trên bản đồ!' }]}
                 >
                   <Input.TextArea
                     autoSize={{ minRows: 2, maxRows: 6 }}
-                    placeholder="Coordinates will be updated when drawing on the map"
+                    placeholder="Tọa độ sẽ được cập nhật khi vẽ trên bản đồ"
                     value={JSON.stringify(selectedCoordinate.polygon)}
                     disabled
                   />
                 </Form.Item>
 
                 <Form.Item
-                  label="Center"
-                  rules={[{ required: true, message: 'Please input center coordinates!' }]}
+                  label="Tâm"
+                  rules={[{ required: true, message: 'Vui lòng nhập tọa độ tâm!' }]}
                 >
                   <Input 
-                    placeholder="e.g., 21.0235276,105.8420103"
+                    placeholder="Ví dụ: 21.0235276,105.8420103"
                     value={`${selectedCoordinate.center.lat},${selectedCoordinate.center.lng}`}
                     onChange={(e) => handleCenterChange(e.target.value)}
                   />
                 </Form.Item>
 
                 <Form.Item
-                  label="Zoom"
-                  rules={[{ required: true, message: 'Please input zoom level!' }]}
+                  label="Tỷ lệ thu phóng"
+                  rules={[{ required: true, message: 'Vui lòng nhập tỷ lệ thu phóng!' }]}
                 >
                   <InputNumber 
                     min={1} 
@@ -258,8 +261,8 @@ export default function EditArea({ params }: { params: { id: string } }) {
               </Card>
             </Form.Item>
 
-            <Form.Item label="Map">
-              <div style={{ height: '400px', marginBottom: '16px' }}>
+            <Form.Item label="Bản đồ">
+              <div style={{ height: '400px', marginBottom: '16px', width: '100%', position: 'relative' }}>
                 <Map
                   coordinates={selectedCoordinate}
                   onCoordinatesUpdate={handleCoordinatesUpdate}
@@ -269,13 +272,13 @@ export default function EditArea({ params }: { params: { id: string } }) {
           </div>
         </div>
       ),
-    },
+    }
   ];
 
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">Đang tải...</div>
       </div>
     );
   }
@@ -283,14 +286,14 @@ export default function EditArea({ params }: { params: { id: string } }) {
   return (
     <div style={{ padding: '24px' }}>
       <Card 
-        title="Edit Area"
+        title="Chỉnh sửa khu vực"
         extra={
           <Space>
             <Button type="primary" onClick={() => form.submit()} loading={loading}>
-              Update Area
+              Cập nhật
             </Button>
             <Button onClick={() => router.push('/area')}>
-              Cancel
+              Hủy
             </Button>
           </Space>
         }
@@ -299,6 +302,7 @@ export default function EditArea({ params }: { params: { id: string } }) {
           form={form}
           layout="vertical"
           onFinish={onFinish}
+          preserve={true}
         >
           <Tabs items={items} />
         </Form>

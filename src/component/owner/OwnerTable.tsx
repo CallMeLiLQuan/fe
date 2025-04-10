@@ -1,28 +1,44 @@
 "use client";
-import React, { useEffect, useState } from "react";
-import { Table, Button, message } from "antd";
+import React, { useCallback, useEffect, useState } from "react";
+import { Table, Button, App } from "antd";
 import { Owner } from "@/model/owner.model";
 
 import OwnerModal from "./OwnerModal";
 import { deleteOwner, fetchOwners } from "@/service/owner.service";
 
 const OwnerTable: React.FC = () => {
+  const { message } = App.useApp();
   const [owners, setOwners] = useState<Owner[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingOwner, setEditingOwner] = useState<Owner | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const loadOwners = async () => {
+  const loadOwners = useCallback(async () => {
     try {
+      setLoading(true);
+      console.log('Starting to load owners');
       const data = await fetchOwners();
-      setOwners(data);
+      console.log('Successfully loaded owners data:', data);
+      setOwners(data || []);
     } catch (error) {
-      message.error("Lỗi khi tải danh sách owner");
+      console.error("Detailed error loading owners:", error);
+      // Only show error message in UI if it's not a network error
+      // Network errors often happen during development
+      if (error instanceof Error) {
+        message.error(`Lỗi khi tải danh sách chủ đất: ${error.message}`);
+      } else {
+        message.error("Lỗi khi tải danh sách chủ đất");
+      }
+      // Set owners to empty array on error
+      setOwners([]);
+    } finally {
+      setLoading(false);
     }
-  };
+  });
 
   useEffect(() => {
     loadOwners();
-  }, []);
+  }, [loadOwners]);
 
   const handleEdit = (owner: Owner) => {
     setEditingOwner(owner);
@@ -31,11 +47,12 @@ const OwnerTable: React.FC = () => {
 
   const handleDelete = async (id: number) => {
     try {
-      await deleteOwner(id);
+      await deleteOwner(String(id)); // Convert to string for API call
       message.success("Xóa thành công");
       loadOwners();
     } catch (error) {
-      message.error("Lỗi khi xóa owner");
+      console.error("Error deleting owner:", error);
+      message.error("Lỗi khi xóa chủ đất");
     }
   };
 
@@ -66,6 +83,11 @@ const OwnerTable: React.FC = () => {
       key: "address",
     },
     {
+      title: "Số điện thoại",
+      dataIndex: "phone",
+      key: "phone",
+    },
+    {
       title: "Số lượng đất",
       dataIndex: "landCount",
       key: "landCount",
@@ -73,12 +95,12 @@ const OwnerTable: React.FC = () => {
     {
       title: "Hành động",
       key: "actions",
-      render: (_: any, record: Owner) => (
+      render: (_: unknown, record: Owner) => (
         <>
-          <Button type="default" onClick={() => handleEdit(record)}>
+          <Button type="primary" onClick={() => handleEdit(record)} style={{ marginRight: 8 }}>
             Sửa
           </Button>
-          <Button type="default" danger onClick={() => handleDelete(record.id)}>
+          <Button danger onClick={() => handleDelete(record.id)}>
             Xóa
           </Button>
         </>
@@ -89,9 +111,15 @@ const OwnerTable: React.FC = () => {
   return (
     <div>
       <Button type="primary" onClick={handleAdd} style={{ marginBottom: 16 }}>
-        Thêm mới Owner
+        Thêm mới chủ đất
       </Button>
-      <Table dataSource={owners} columns={columns} rowKey="id" />
+      <Table 
+        dataSource={owners} 
+        columns={columns} 
+        rowKey="id" 
+        loading={loading}
+        pagination={{ defaultPageSize: 10 }}
+      />
       <OwnerModal
         visible={modalVisible}
         onCancel={() => setModalVisible(false)}

@@ -1,5 +1,4 @@
 import axiosInstance from "@/utils/axiosInstance";
-import { Land } from "../model/land.model";
 import { Area } from "../model/area.model";
 import { AxiosError } from 'axios';
 
@@ -212,14 +211,76 @@ export const createLand = async (payload: {
   }
 };
 
-export const updateLand = async (id: number, payload: Partial<Land>) => {
+export const updateLand = async (id: number, payload: {
+  name: string;
+  address: string;
+  area: number;
+  price: number;
+  location: string;
+  properties: Array<{ key: string; value: string | number | boolean }>;
+  coordinate: {
+    polygon: [number, number][] | string;
+    center: { lat: number; lng: number } | string;
+    zoom: number;
+  };
+  ownerId: number;
+  regionId: number;
+  planningMapUrl?: string;
+  googleMapUrl?: string;
+}) => {
   const token = getToken();
-  const response = await axiosInstance.put(`land/${id}`, payload, {
-    headers: {
-      Authorization: `Bearer ${token}`
+  try {
+    // Ensure coordinate data is properly formatted
+    const coordinatePayload = {
+      polygon: typeof payload.coordinate.polygon === 'string' 
+        ? payload.coordinate.polygon 
+        : JSON.stringify(payload.coordinate.polygon),
+      center: typeof payload.coordinate.center === 'string'
+        ? payload.coordinate.center
+        : JSON.stringify(payload.coordinate.center),
+      zoom: payload.coordinate.zoom
+    };
+
+    const formattedPayload = {
+      name: payload.name,
+      address: payload.address,
+      area: payload.area,
+      price: payload.price,
+      location: payload.location,
+      properties: payload.properties,
+      coordinate: coordinatePayload,
+      ownerId: payload.ownerId,
+      regionId: payload.regionId,
+      planningMapUrl: payload.planningMapUrl || '',
+      googleMapUrl: payload.googleMapUrl || ''
+    };
+
+    console.log('Updating land with payload:', JSON.stringify(formattedPayload, null, 2));
+    const response = await axiosInstance.put(`land/${id}`, formattedPayload, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    console.log('Server response:', response.data);
+    return response.data;
+  } catch (error: unknown) {
+    if (error instanceof AxiosError) {
+      console.error('Error updating land:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        error: error.response?.data?.error,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          data: error.config?.data ? JSON.parse(error.config.data) : {},
+          headers: error.config?.headers
+        }
+      });
     }
-  });
-  return response.data;
+    throw error;
+  }
 };
 
 export const deleteLand = async (id: number) => {

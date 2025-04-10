@@ -26,7 +26,7 @@ import { Area, AreaClassification } from "@/model/area.model";
 import { Employee } from "@/model/employee.model";
 import { Task } from "@/model/task.model";
 import { updateLand } from "@/service/land.service";
-import { toApiCoordinates } from "@/model/coordinate.model";
+// import { toApiCoordinates } from "@/model/coordinate.model";
 import dynamic from 'next/dynamic';
 
 const ViewOnlyMap = dynamic(() => import('@/component/map/ViewOnlyMap'), { ssr: false });
@@ -89,14 +89,14 @@ export default function AreaDetail() {
     const loadArea = async () => {
       try {
         const areaId = Array.isArray(params?.id) ? params.id[0] : params?.id;
-        
+
         if (!areaId) {
           console.error('Area ID is undefined');
           messageApi.error('Invalid area ID');
           setLoading(false);
           return;
         }
-        
+
         const response = await getAreaById(parseInt(areaId));
         console.log('Raw data from API:', response);
         
@@ -138,7 +138,7 @@ export default function AreaDetail() {
         setLoading(false);
       }
     };
-    
+
     loadArea();
 
     return () => {
@@ -158,7 +158,7 @@ export default function AreaDetail() {
 
       const updatedArea = await updateArea(area.id, {
         ...values,
-        coordinates: area.coordinates ? toApiCoordinates(area.coordinates) : undefined
+        coordinates: area.coordinates
       });
 
       if (updatedArea) {
@@ -275,7 +275,15 @@ export default function AreaDetail() {
         return;
       }
 
-      const updatedLand = await updateLand(area.land.id, values);
+      const updatedLand = await updateLand(area.land.id, {
+        ...area.land,
+        ...values,
+        coordinate: area.land.coordinate,
+        properties: area.land.properties,
+        ownerId: area.land.owner.id,
+        regionId: area.land.region.id
+      });
+      
       if (updatedLand) {
         setArea(prev => prev ? { ...prev, land: updatedLand } : null);
         messageApi.success('Land updated successfully');
@@ -290,32 +298,25 @@ export default function AreaDetail() {
   const tabItems = [
     {
       key: 'info',
-      label: 'Basic Information',
+      label: 'Thông tin khu vực',
       children: (
         <Card>
           <Descriptions bordered column={2}>
-            <Descriptions.Item label="Name">{area?.name}</Descriptions.Item>
-            <Descriptions.Item label="Area Name">{area?.areaName}</Descriptions.Item>
-            <Descriptions.Item label="Land Plot">{area?.landPlot}</Descriptions.Item>
-            <Descriptions.Item label="Status">{area?.status}</Descriptions.Item>
-            <Descriptions.Item label="Area">{area?.area} m²</Descriptions.Item>
-            <Descriptions.Item label="Usage">{area?.usage}</Descriptions.Item>
+            <Descriptions.Item label="Tên khu vực">{area?.name}</Descriptions.Item>
+            <Descriptions.Item label="Vị trí">{area?.areaName}</Descriptions.Item>
+            <Descriptions.Item label="Mảnh đất">{area?.landPlot}</Descriptions.Item>
+            <Descriptions.Item label="Trạng thái">{area?.status}</Descriptions.Item>
+            <Descriptions.Item label="Diện tích">{area?.area} ha</Descriptions.Item>
             <Descriptions.Item label="Classification">{area?.classification}</Descriptions.Item>
           </Descriptions>
           <div className="mt-4 flex justify-end">
-            <Button 
-              type="primary"
-              onClick={() => router.push(`/area/${area?.id}`)}
-            >
-              View Details
-            </Button>
           </div>
         </Card>
       )
     },
     {
       key: 'map',
-      label: 'Map View',
+      label: 'Bản đồ',
       children: (
         <div className="h-[600px] mb-6">
           {area?.coordinates && (
@@ -328,7 +329,7 @@ export default function AreaDetail() {
     },
     {
       key: 'employees',
-      label: 'Employees',
+      label: 'Nhân viên của khu vực',
       children: (
         <div>
           <div className="mb-4">
@@ -348,17 +349,17 @@ export default function AreaDetail() {
             }))}
             columns={[
               {
-                title: 'Name',
+                title: 'Tên nhân viên',
                 dataIndex: 'name',
                 key: 'name'
               },
               {
-                title: 'Position',
+                title: 'Vị trí',
                 dataIndex: 'position',
                 key: 'position'
               },
               {
-                title: 'Actions',
+                title: 'Hành động',
                 key: 'actions',
                 render: (_, record: TableEmployee) => (
                   <Space>
@@ -387,7 +388,7 @@ export default function AreaDetail() {
     },
     {
       key: 'tasks',
-      label: 'Tasks',
+      label: 'Công việc',
       children: (
         <div>
           <div className="mb-4">
@@ -396,7 +397,7 @@ export default function AreaDetail() {
               icon={<PlusOutlined />}
               onClick={() => setIsTaskModalVisible(true)}
             >
-              Add Task
+              Thêm mới công việc
             </Button>
           </div>
           <Table<TableTask>
@@ -407,22 +408,22 @@ export default function AreaDetail() {
             }))}
           columns={[
               {
-                title: 'Title',
+                title: 'Tiêu đề',
                 dataIndex: 'title',
                 key: 'title'
               },
               {
-                title: 'Description',
+                title: 'Mô tả',
                 dataIndex: 'description',
                 key: 'description'
               },
               {
-                title: 'Status',
+                title: 'Trạng thái',
                 dataIndex: 'status',
                 key: 'status'
               },
               {
-                title: 'Actions',
+                title: 'Hành động',
                 key: 'actions',
                 render: (_, record: TableTask) => (
                   <Space>
@@ -434,10 +435,10 @@ export default function AreaDetail() {
                       }}
                     />
                     <Popconfirm
-                      title="Are you sure you want to delete this task?"
+                      title="Bạn có chắc chắn mốn xóa công việc này?"
                       onConfirm={() => handleTaskDelete(record.id || 0)}
-                      okText="Yes"
-                      cancelText="No"
+                      okText="Có"
+                      cancelText="Không"
                     >
                       <Button icon={<DeleteOutlined />} danger />
                     </Popconfirm>
@@ -451,8 +452,8 @@ export default function AreaDetail() {
     }
   ];
 
-  if (loading) return <div>Loading...</div>;
-  if (!area) return <div>Area not found</div>;
+  if (loading) return <div>Đang tải...</div>;
+  if (!area) return <div>Không tìm thấy khu vực nào</div>;
 
   return (
     <div className="p-6">
@@ -465,13 +466,7 @@ export default function AreaDetail() {
           <Space>
             <Button 
               icon={<EditOutlined />}
-              onClick={() => setIsLandEditModalVisible(true)}
-            >
-              Edit Land
-            </Button>
-            <Button 
-              icon={<EditOutlined />}
-              onClick={() => setIsEditModalVisible(true)}
+              onClick={() => router.push(`/area/edit/${area?.id}`)}
             >
               Edit Area
             </Button>
@@ -492,7 +487,7 @@ export default function AreaDetail() {
           <Form.Item
             label="Name"
             name="name"
-            rules={[{ required: true, message: 'Please input the name!' }]}
+            rules={[{ required: true, message: 'Hãy nhập tên!' }]}
           >
             <Input />
           </Form.Item>
@@ -522,7 +517,7 @@ export default function AreaDetail() {
             </Select>
           </Form.Item>
           <Form.Item
-            label="Area (m²)"
+            label="Area (ha)"
             name="area"
             rules={[{ required: true, message: 'Please input the area!' }]}
           >
@@ -571,7 +566,7 @@ export default function AreaDetail() {
             <Input />
           </Form.Item>
           <Form.Item
-            label="Area (m²)"
+            label="Area (ha)"
             name="area"
             rules={[{ required: true, message: 'Please input the area!' }]}
           >

@@ -97,7 +97,7 @@ export default function AddLand() {
     try {
       // Validate coordinates
       if (!coordinates.polygon || coordinates.polygon.length < 3) {
-        throw new Error('Vui lòng vẽ polygon với ít nhất 3 điểm trên bản đồ');
+        throw new Error('Vui lòng vẽ đa giác với ít nhất 3 điểm trên bản đồ');
       }
 
       // Format owner data
@@ -165,7 +165,7 @@ export default function AddLand() {
 
       try {
         await createLand(payload);
-        message.success('Khu đất được tạo thành công');
+        message.success('Tạo khu đất thành công');
         router.push('/land');
       } catch (error: unknown) {
         if (error instanceof AxiosError) {
@@ -238,7 +238,7 @@ export default function AddLand() {
 
           <Form.Item
             name="area"
-            label="Diện tích (m²)"
+            label="Diện tích (ha)"
             rules={[{ required: true, message: 'Vui lòng nhập diện tích' }]}
           >
             <InputNumber style={{ width: '100%' }} min={0} />
@@ -270,7 +270,7 @@ export default function AddLand() {
               <Form.Item
                 name="polygon"
                 label="Tọa độ mảnh đất"
-                rules={[{ required: true, message: 'Vui lòng vẽ polygon trên bản đồ' }]}
+                rules={[{ required: true, message: 'Vui lòng vẽ đa giác trên bản đồ' }]}
               >
                 <Input.TextArea
                   autoSize={{ minRows: 2, maxRows: 6 }}

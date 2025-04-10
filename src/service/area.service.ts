@@ -1,7 +1,7 @@
 import axiosInstance from '@/util/axiosInstance';
 import { Area, AreaResponse, toArea } from '@/model/area.model';
 import { Task } from '@/model/task.model';
-import { createDefaultCoordinates, toApiCoordinates, DatabaseCoordinates, ApiCoordinates } from "@/model/coordinate.model";
+import { createDefaultCoordinates, DatabaseCoordinates, ApiCoordinates } from "@/model/coordinate.model";
 import { AreaClassification } from '@/model/area.model';
 
 export interface CreateAreaDto {
@@ -12,7 +12,7 @@ export interface CreateAreaDto {
   area: number;
   usage: string;
   landId: number;
-  coordinates: ApiCoordinates;
+  coordinates: DatabaseCoordinates;
   classification?: string;
 }
 
@@ -31,12 +31,17 @@ export const getToken = () => {
   return null;
 };
 
-const BASE_URL = '/areas';
+const BASE_URL = 'areas';
 
 export async function fetchAreas(): Promise<Area[]> {
+  const token = getToken();
   try {
     console.log('Fetching areas from:', BASE_URL);
-    const response = await axiosInstance.get<AreaResponse[]>(BASE_URL);
+    const response = await axiosInstance.get<AreaResponse[]>(BASE_URL, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     console.log('Areas response:', JSON.stringify(response.data, null, 2));
     return response.data.map(areaResponse => {
       console.log('Processing area:', areaResponse.id);
@@ -45,7 +50,6 @@ export async function fetchAreas(): Promise<Area[]> {
         return toArea(areaResponse);
       } catch (error) {
         console.error('Error processing area:', areaResponse.id, error);
-        // Return a default area with default coordinates
         return {
           ...areaResponse,
           coordinates: createDefaultCoordinates(),
@@ -60,8 +64,13 @@ export async function fetchAreas(): Promise<Area[]> {
 }
 
 export async function getAreaById(id: number): Promise<Area> {
+  const token = getToken();
   try {
-    const response = await axiosInstance.get<AreaResponse>(`${BASE_URL}/${id}`);
+    const response = await axiosInstance.get<AreaResponse>(`${BASE_URL}/${id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     return toArea(response.data);
   } catch (error) {
     console.error(`Error fetching area ${id}:`, error);
@@ -77,23 +86,26 @@ interface CreateAreaPayload {
   usage: string;
   status: 'available' | 'in-use' | 'pending';
   classification: AreaClassification;
-  coordinates?: {
-    center: { lat: number; lng: number };
-    polygon: [number, number][];
-    zoom: number;
-  };
+  coordinates?: DatabaseCoordinates;
   landPlot: string;
 }
 
 export const createArea = async (payload: CreateAreaPayload) => {
-  const token = localStorage.getItem('access_token');
+  const token = getToken();
   try {
-    const response = await axiosInstance.post("areas", payload, {
+    const formattedPayload = {
+      ...payload,
+      coordinates: payload.coordinates || createDefaultCoordinates()
+    };
+
+    console.log('Creating area with payload:', JSON.stringify(formattedPayload, null, 2));
+    const response = await axiosInstance.post(BASE_URL, formattedPayload, {
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       }
     });
+    console.log('Server response:', response.data);
     return response.data;
   } catch (error) {
     console.error('Error creating area:', error);
@@ -102,17 +114,20 @@ export const createArea = async (payload: CreateAreaPayload) => {
 };
 
 export const updateArea = async (id: number, payload: UpdateAreaDto): Promise<Area> => {
+  const token = getToken();
   try {
-    const coordinate = payload.coordinates || createDefaultCoordinates();
-    
-    const requestPayload = {
+    const formattedPayload = {
       ...payload,
-      coordinates: typeof coordinate.polygon === 'string'
-        ? coordinate
-        : toApiCoordinates(coordinate as unknown as DatabaseCoordinates)
+      coordinates: payload.coordinates || undefined
     };
 
-    const response = await axiosInstance.put<AreaResponse>(`${BASE_URL}/${id}`, requestPayload);
+    console.log('Updating area with payload:', JSON.stringify(formattedPayload, null, 2));
+    const response = await axiosInstance.put<AreaResponse>(`${BASE_URL}/${id}`, formattedPayload, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
     return toArea(response.data);
   } catch (error) {
     console.error(`Error updating area ${id}:`, error);
@@ -121,8 +136,13 @@ export const updateArea = async (id: number, payload: UpdateAreaDto): Promise<Ar
 };
 
 export const deleteArea = async (id: number): Promise<void> => {
+  const token = getToken();
   try {
-    await axiosInstance.delete(`${BASE_URL}/${id}`);
+    await axiosInstance.delete(`${BASE_URL}/${id}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
   } catch (error) {
     console.error(`Error deleting area ${id}:`, error);
     throw error;
@@ -130,8 +150,13 @@ export const deleteArea = async (id: number): Promise<void> => {
 };
 
 export async function getAreasByLandId(landId: number): Promise<Area[]> {
+  const token = getToken();
   try {
-    const response = await axiosInstance.get<AreaResponse[]>(`${BASE_URL}/land/${landId}`);
+    const response = await axiosInstance.get<AreaResponse[]>(`${BASE_URL}/land/${landId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     return response.data.map(areaResponse => toArea(areaResponse));
   } catch (error) {
     console.error(`Error fetching areas for land ${landId}:`, error);
@@ -140,8 +165,13 @@ export async function getAreasByLandId(landId: number): Promise<Area[]> {
 }
 
 export const assignEmployeeToArea = async (areaId: number, employeeId: number) => {
+  const token = getToken();
   try {
-    const response = await axiosInstance.post(`${BASE_URL}/${areaId}/employees/${employeeId}`, {});
+    const response = await axiosInstance.post(`${BASE_URL}/${areaId}/employee/${employeeId}`, {}, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
     return response.data;
   } catch (error) {
     console.error(`Error assigning employee ${employeeId} to area ${areaId}:`, error);
@@ -150,8 +180,13 @@ export const assignEmployeeToArea = async (areaId: number, employeeId: number) =
 };
 
 export const removeEmployeeFromArea = async (areaId: number, employeeId: number) => {
+  const token = getToken();
   try {
-    await axiosInstance.delete(`${BASE_URL}/${areaId}/employees/${employeeId}`);
+    await axiosInstance.delete(`${BASE_URL}/${areaId}/employee/${employeeId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
   } catch (error) {
     console.error(`Error removing employee ${employeeId} from area ${areaId}:`, error);
     throw error;
@@ -159,8 +194,14 @@ export const removeEmployeeFromArea = async (areaId: number, employeeId: number)
 };
 
 export const createTask = async (areaId: number, task: Partial<Task>) => {
+  const token = getToken();
   try {
-    const response = await axiosInstance.post(`${BASE_URL}/${areaId}/tasks`, task);
+    const response = await axiosInstance.post(`${BASE_URL}/${areaId}/task`, task, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
     return response.data;
   } catch (error) {
     console.error(`Error creating task for area ${areaId}:`, error);
@@ -169,8 +210,13 @@ export const createTask = async (areaId: number, task: Partial<Task>) => {
 };
 
 export const deleteTask = async (areaId: number, taskId: number) => {
+  const token = getToken();
   try {
-    await axiosInstance.delete(`${BASE_URL}/${areaId}/tasks/${taskId}`);
+    await axiosInstance.delete(`${BASE_URL}/${areaId}/task/${taskId}`, {
+      headers: {
+        'Authorization': `Bearer ${token}`
+      }
+    });
   } catch (error) {
     console.error(`Error deleting task ${taskId} from area ${areaId}:`, error);
     throw error;

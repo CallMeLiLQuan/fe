@@ -1,17 +1,38 @@
 export interface Owner {
   id: number;
   name: string;
-  phone: string;
   address: string;
+  phone: string;
   email?: string;
-  identityNumber?: string;
   landCount: number;
-  created_date?: string;
-  modified_date?: string;
-  status?: string;
-  description?: string;
-  properties?: Property[];
+  createdDate?: Date;
+  properties?: { key: string; value: string | number | boolean }[];
 }
+
+export interface OwnerResponse {
+  id: number;
+  name: string;
+  address: string;
+  phone: string;
+  email?: string;
+  landCount: number;
+  createdDate?: string;
+  properties?: { key: string; value: string | number | boolean }[];
+}
+
+export const toOwner = (response: OwnerResponse): Owner => {
+  return {
+    ...response,
+    createdDate: response.createdDate ? new Date(response.createdDate) : undefined,
+  };
+};
+
+export const toOwnerResponse = (owner: Owner): OwnerResponse => {
+  return {
+    ...owner,
+    createdDate: owner.createdDate ? owner.createdDate.toISOString() : undefined,
+  };
+};
 
 export interface Property {
   id: number;

@@ -32,22 +32,22 @@ function AreaCard({ area, onDelete }: AreaCardProps) {
   const handleDelete = async () => {
     try {
       await deleteArea(area.id);
-      message.success('Area deleted successfully');
+      message.success('Xóa mảnh đất thành công');
       onDelete();
     } catch (error) {
-      console.error('Error deleting area:', error);
-      message.error('Failed to delete area');
+      console.error('Lỗi xóa mảnh đất:', error);
+      message.error('Xóa mảnh đất thất bại');
     }
   };
 
   const getStatusColor = (status: string = 'default') => {
     switch (status?.toLowerCase()) {
       case 'available':
-        return 'success';
+        return 'Hoàn thành';
       case 'in-use':
-        return 'warning';
+        return 'Đang sử dụng';
       case 'pending':
-        return 'processing';
+        return 'Đang chờ';
       default:
         return 'default';
     }
@@ -65,11 +65,11 @@ function AreaCard({ area, onDelete }: AreaCardProps) {
         </Button>,
         <Popconfirm
           key="delete"
-          title="Delete Area"
-          description="Are you sure you want to delete this area?"
+          title="Xóa mảnh đất"
+          description="Bạn có chắc chắn muốn xóa mảnh đất này không?"
           onConfirm={handleDelete}
-          okText="Yes"
-          cancelText="No"
+          okText="Có"
+          cancelText="Không"
         >
           <Button type="text" danger icon={<DeleteOutlined />}>
             Delete
@@ -79,17 +79,17 @@ function AreaCard({ area, onDelete }: AreaCardProps) {
     >
       <div className="flex justify-between items-start mb-4">
         <div>
-          <div className="font-semibold text-lg">{area.name || 'Unnamed Area'}</div>
-          <div className="text-gray-500">{area.landPlot || 'No Land Plot'}</div>
+          <div className="font-semibold text-lg">{area.name || 'Tên mảnh đất'}</div>
+          <div className="text-gray-500">{area.landPlot || 'Không có mảnh đất'}</div>
         </div>
-        <Tag color={getStatusColor(area.status)}>{area.status || 'Unknown'}</Tag>
+        <Tag color={getStatusColor(area.status)}>{area.status || 'Không xác định'}</Tag>
       </div>
       <div className="grid grid-cols-2 gap-2 text-sm">
-        <div className="text-gray-500">Area Name:</div>
+        <div className="text-gray-500">Tên mảnh đất:</div>
         <div>{area.areaName || 'N/A'}</div>
-        <div className="text-gray-500">Area:</div>
-        <div>{area.area ? `${area.area} m²` : 'N/A'}</div>
-        <div className="text-gray-500">Usage:</div>
+        <div className="text-gray-500">Diện tích:</div>
+        <div>{area.area ? `${area.area} ha` : 'N/A'}</div>
+        <div className="text-gray-500">Mục đích sử dụng:</div>
         <div>{area.usage || 'N/A'}</div>
       </div>
     </Card>
@@ -101,7 +101,6 @@ export default function AreaCardList() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
   const { message } = App.useApp();
 
   const loadAreas = useCallback(async () => {
@@ -112,9 +111,9 @@ export default function AreaCardList() {
       setAreas(data || []);
       setError(null);
     } catch (error) {
-      console.error('Error loading areas:', error);
-      setError('Failed to load areas');
-      message.error('Failed to load areas');
+      console.error('Lỗi tải mảnh đất:', error);
+      setError('Không tải được mảnh đất');
+      message.error('Không tải được mảnh đất');
     } finally {
       setLoading(false);
     }
@@ -133,7 +132,7 @@ export default function AreaCardList() {
   if (loading) {
     return (
       <div className="h-screen flex items-center justify-center">
-        <div className="text-gray-500">Loading...</div>
+        <div className="text-gray-500">Đang tải...</div>
       </div>
     );
   }
@@ -154,9 +153,6 @@ export default function AreaCardList() {
           style={{ width: 300 }}
           onChange={e => setSearchTerm(e.target.value)}
         />
-        <Button type="primary" onClick={() => router.push('/area/add')}>
-          Add New Area
-        </Button>
       </div>
 
       {filteredAreas.length === 0 ? (
